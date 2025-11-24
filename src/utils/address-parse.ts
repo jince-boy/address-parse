@@ -1,6 +1,6 @@
-import zhCnNames from './names.json'
-import addressJson from './pca-code.json'
-import filterText from './filterText.json'
+import zhCnNames from '@/utils/names.json'
+import addressJson from '@/utils/pca-code.json'
+import filterText from '@/utils/filterText.json'
 import type {
   AreaItem,
   CityItem,
@@ -127,27 +127,32 @@ const sortAddress = (splitAddress: string[]): string[] => {
  * 地址清洗
  */
 const cleanAddress = (address: string, textFilter: string[] = []): string => {
-  // 去换行等
+  // 合并过滤词，并按长度从长到短排序（重要！）
+  const allFilters = [...textFilter, ...filterText]
+    .filter((item) => item.trim()) // 过滤空值
+    .sort((a, b) => b.length - a.length) // 长关键词优先
+
   let cleaned = address.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\t/g, ' ')
 
-  // 自定义去除关键字
-  filterText.concat(textFilter)
-
-  filterText.forEach((str) => {
-    cleaned = cleaned.replace(new RegExp(str, 'g'), ' ')
-  })
-
+  // 先处理特殊符号
   const pattern = /[`~!@#$^&*()=|{}':;,\[\].<>\/?！￥…（）—【】；：。，、？]/g
   cleaned = cleaned.replace(pattern, ' ')
 
-  // 多个空格replace为一个
-  cleaned = cleaned.replace(/ {2,}/g, ' ')
+  // 按长度从长到短替换关键词（避免部分匹配问题）
+  allFilters.forEach((str) => {
+    cleaned = cleaned.replace(new RegExp(str, 'g'), ' ')
+  })
 
   // 适配直辖市区
   const municipality = ['北京', '上海', '天津', '重庆']
   municipality.forEach((str) => {
-    cleaned = cleaned.replace(str + str, str)
+    // 修复直辖市重复问题
+    const regex = new RegExp(`(${str})\\s*\\1`, 'g')
+    cleaned = cleaned.replace(regex, '$1')
   })
+
+  // 多个空格替换为一个
+  cleaned = cleaned.replace(/ {2,}/g, ' ')
 
   return cleaned.trim()
 }
@@ -161,7 +166,7 @@ const cleanAddress = (address: string, textFilter: string[] = []): string => {
  * 匹配电话号码（支持手机号、固话、400电话等）
  */
 const filterPhone = (address: string): { address: string; phone: string } => {
-  let cleaned = address;
+  let cleaned = address
 
   // 中国电话号码正则模式
   const phonePatterns = [
@@ -179,103 +184,104 @@ const filterPhone = (address: string): { address: string; phone: string } => {
 
     // 带国际区号：+86 或 0086 开头
     /(?:\+?86|0086)[-\s]?1[3-9]\d{9}/g,
-    /(?:\+?86|0086)[-\s]?0\d{2,3}[-\s]?\d{7,8}/g
-  ];
+    /(?:\+?86|0086)[-\s]?0\d{2,3}[-\s]?\d{7,8}/g,
+  ]
 
   // 统一清理电话号码格式
   const normalizePhone = (phoneStr: string): string => {
-    return phoneStr.replace(/[-\s+()（）]/g, '')
+    return phoneStr
+      .replace(/[-\s+()（）]/g, '')
       .replace(/^0086/, '86')
       .replace(/^86(\d{11})/, '$1')
-      .replace(/^860?(\d{10,11})/, '$1');
-  };
+      .replace(/^860?(\d{10,11})/, '$1')
+  }
 
   // 查找所有可能的电话号码
-  const phoneMatches: Array<{ match: string; index: number }> = [];
+  const phoneMatches: Array<{ match: string; index: number }> = []
 
-  phonePatterns.forEach(pattern => {
-    const matches = cleaned.matchAll(pattern);
+  phonePatterns.forEach((pattern) => {
+    const matches = cleaned.matchAll(pattern)
     for (const match of matches) {
       if (match.index !== undefined && match[0]) {
         phoneMatches.push({
           match: match[0],
-          index: match.index
-        });
+          index: match.index,
+        })
       }
     }
-  });
+  })
 
   // 如果没有匹配，直接返回
   if (phoneMatches.length === 0) {
     return {
       address: cleaned.replace(/\s+/g, ' ').trim(),
-      phone: ''
-    };
+      phone: '',
+    }
   }
 
   // 按匹配位置排序（从右到左）
-  phoneMatches.sort((a, b) => b.index - a.index);
+  phoneMatches.sort((a, b) => b.index - a.index)
 
   // 安全获取最佳匹配
-  const bestMatch = phoneMatches[0];
+  const bestMatch = phoneMatches[0]
 
   // 安全检查
   if (!bestMatch || !bestMatch.match) {
     return {
       address: cleaned.replace(/\s+/g, ' ').trim(),
-      phone: ''
-    };
+      phone: '',
+    }
   }
 
-  const phone = bestMatch.match;
+  const phone = bestMatch.match
 
   // 从地址中移除匹配到的电话号码
-  cleaned = cleaned.substring(0, bestMatch.index) +
-    cleaned.substring(bestMatch.index + phone.length);
+  cleaned =
+    cleaned.substring(0, bestMatch.index) + cleaned.substring(bestMatch.index + phone.length)
 
   // 格式化返回的电话号码
-  const formattedPhone = normalizePhone(phone);
+  const formattedPhone = normalizePhone(phone)
 
   return {
     address: cleaned.replace(/\s+/g, ' ').trim(),
-    phone: formattedPhone
-  };
-};
+    phone: formattedPhone,
+  }
+}
 
 /**
  * 匹配邮编
  */
 const filterPostalCode = (address: string): { address: string; postalCode: string } => {
-  const postalCodeReg = /\b(\d{6})\b/g;
+  const postalCodeReg = /\b(\d{6})\b/g
 
   try {
-    const matches = [...address.matchAll(postalCodeReg)];
+    const matches = [...address.matchAll(postalCodeReg)]
 
     // 使用可选链操作符和空值合并进行安全访问
-    const lastMatch = matches[matches.length - 1];
-    const postalCodeMatch = lastMatch?.[1] ?? '';
-    const matchIndex = lastMatch?.index ?? -1;
-    const matchLength = lastMatch?.[0]?.length ?? 0;
+    const lastMatch = matches[matches.length - 1]
+    const postalCodeMatch = lastMatch?.[1] ?? ''
+    const matchIndex = lastMatch?.index ?? -1
+    const matchLength = lastMatch?.[0]?.length ?? 0
 
     if (postalCodeMatch && matchIndex >= 0) {
-      const cleanedAddress = address.substring(0, matchIndex) +
-        address.substring(matchIndex + matchLength);
+      const cleanedAddress =
+        address.substring(0, matchIndex) + address.substring(matchIndex + matchLength)
 
       return {
         address: cleanedAddress.replace(/\s+/g, ' ').trim(),
-        postalCode: postalCodeMatch
-      };
+        postalCode: postalCodeMatch,
+      }
     }
   } catch (error) {
     // 如果 matchAll 失败，回退到原始地址
-    console.warn('Postal code matching failed:', error);
+    console.warn('Postal code matching failed:', error)
   }
 
   return {
     address: address.replace(/\s+/g, ' ').trim(),
-    postalCode: ''
-  };
-};
+    postalCode: '',
+  }
+}
 
 // ==================== 区域匹配 ====================
 
