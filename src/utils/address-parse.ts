@@ -159,9 +159,7 @@ const cleanAddress = (address: string, textFilter: string[] = []): string => {
 
 // ==================== 电话和邮编提取 ====================
 
-/**
- * 匹配电话
- */
+
 /**
  * 匹配电话号码（支持手机号、固话、400电话等）
  */
@@ -219,8 +217,13 @@ const filterPhone = (address: string): { address: string; phone: string } => {
     }
   }
 
-  // 按匹配位置排序（从右到左）
-  phoneMatches.sort((a, b) => b.index - a.index)
+  // 按匹配长度排序（从长到短），如果长度相同则按位置（从右到左）
+  phoneMatches.sort((a, b) => {
+    if (b.match.length !== a.match.length) {
+      return b.match.length - a.match.length
+    }
+    return b.index - a.index
+  })
 
   // 安全获取最佳匹配
   const bestMatch = phoneMatches[0]
